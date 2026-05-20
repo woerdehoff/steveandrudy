@@ -1,0 +1,30 @@
+[
+    {
+        "Id": "E2LVIDOE8DNVZ2",
+        "DomainName": "d2drssy4d9abby.cloudfront.net",
+        "Status": "Deployed",
+        "Origins": {
+            "Quantity": 1,
+            "Items": [
+                {
+                    "Id": "steveandrudy-s3-origin",
+                    "DomainName": "steveandrudy.com.s3.amazonaws.com",
+                    "OriginPath": "",
+                    "CustomHeaders": {
+                        "Quantity": 0
+                    },
+                    "S3OriginConfig": {
+                        "OriginAccessIdentity": "",
+                        "OriginReadTimeout": 30
+                    },
+                    "ConnectionAttempts": 3,
+                    "ConnectionTimeout": 10,
+                    "OriginShield": {
+                        "Enabled": false
+                    },
+                    "OriginAccessControlId": ""
+                }
+            ]
+        }
+    }
+]
