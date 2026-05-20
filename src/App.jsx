@@ -9,8 +9,10 @@ import './App.css'
 function App() {
   const [activeTab, setActiveTab] = useState('home')
   const [isSteveSongPlaying, setIsSteveSongPlaying] = useState(false)
+  const [isRudySongPlaying, setIsRudySongPlaying] = useState(false)
   const audioRef = useRef(null)
   const steveSongRef = useRef(null)
+  const rudySongRef = useRef(null)
 
   useEffect(() => {
     if (activeTab === 'steve') {
@@ -20,10 +22,29 @@ function App() {
       steveSongRef.current.currentTime = 0
       steveSongRef.current.play().catch(err => console.log('Audio play failed:', err))
       setIsSteveSongPlaying(true)
+      if (rudySongRef.current) {
+        rudySongRef.current.pause()
+        setIsRudySongPlaying(false)
+      }
+    } else if (activeTab === 'rudy') {
+      if (!rudySongRef.current) {
+        rudySongRef.current = new Audio('/sounds/Galveston Oil-Slick.mp3')
+      }
+      rudySongRef.current.currentTime = 0
+      rudySongRef.current.play().catch(err => console.log('Audio play failed:', err))
+      setIsRudySongPlaying(true)
+      if (steveSongRef.current) {
+        steveSongRef.current.pause()
+        setIsSteveSongPlaying(false)
+      }
     } else {
       if (steveSongRef.current) {
         steveSongRef.current.pause()
         setIsSteveSongPlaying(false)
+      }
+      if (rudySongRef.current) {
+        rudySongRef.current.pause()
+        setIsRudySongPlaying(false)
       }
     }
   }, [activeTab])
@@ -33,6 +54,14 @@ function App() {
       steveSongRef.current.pause()
       steveSongRef.current.currentTime = 0
       setIsSteveSongPlaying(false)
+    }
+  }
+
+  const stopRudySong = () => {
+    if (rudySongRef.current) {
+      rudySongRef.current.pause()
+      rudySongRef.current.currentTime = 0
+      setIsRudySongPlaying(false)
     }
   }
 
@@ -146,7 +175,10 @@ function App() {
                       <p>Rudy has a calm, grounding presence that makes everyone feel valued. His friendship is a gift that keeps on giving.</p>
                     </div>
                   </div>
-                  <button className="cta-button" onClick={() => setActiveTab('about')}>Our Story Together</button>
+                  <div className="button-group">
+                    <button className="cta-button" onClick={() => setActiveTab('about')}>Our Story Together</button>
+                    <button className="stop-button" onClick={stopRudySong}>Stop Song</button>
+                  </div>
                 </div>
                 <div className="profile-image">
                   <img src={rudyPhoto} alt="Rudy" className="profile-photo" />
