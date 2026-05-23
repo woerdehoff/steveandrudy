@@ -31,26 +31,52 @@ function App() {
       steveSongRef.current.currentTime = 0
       steveSongRef.current.play().catch(() => {})
       if (rudySongRef.current) rudySongRef.current.pause()
-      if (skyjackSongRef.current) skyjackSongRef.current.pause()
+      if (skyjackSongRef.current?.audio) {
+        skyjackSongRef.current.audio.pause()
+      }
     } else if (activeTab === 'rudy') {
       if (!rudySongRef.current) rudySongRef.current = new Audio('/sounds/Galveston Oil-Slick.mp3')
       rudySongRef.current.currentTime = 0
       rudySongRef.current.play().catch(() => {})
       if (steveSongRef.current) steveSongRef.current.pause()
-      if (skyjackSongRef.current) skyjackSongRef.current.pause()
-    } else if (activeTab === 'memories-skyjack') {
-      if (!skyjackSongRef.current) {
-        skyjackSongRef.current = new Audio('/sounds/cloud-chimehum.mp3')
-        skyjackSongRef.current.loop = true
+      if (skyjackSongRef.current?.audio) {
+        skyjackSongRef.current.audio.pause()
       }
-      skyjackSongRef.current.currentTime = 0
-      skyjackSongRef.current.play().catch(() => {})
+    } else if (activeTab === 'memories-skyjack') {
+      // Use Web Audio API for independent playback that browsers won't auto-pause
+      if (!skyjackSongRef.current?.audioContext) {
+        const audioContext = new (window.AudioContext || window.webkitAudioContext)()
+        const audio = new Audio('/sounds/cloud-chimehum.mp3')
+        audio.loop = true
+        
+        const source = audioContext.createMediaElementSource(audio)
+        const gainNode = audioContext.createGain()
+        gainNode.gain.value = 1.0
+        
+        source.connect(gainNode)
+        gainNode.connect(audioContext.destination)
+        
+        skyjackSongRef.current = {
+          audio,
+          audioContext,
+          gainNode,
+          source
+        }
+      }
+      
+      if (skyjackSongRef.current.audioContext.state === 'suspended') {
+        skyjackSongRef.current.audioContext.resume()
+      }
+      skyjackSongRef.current.audio.currentTime = 0
+      skyjackSongRef.current.audio.play().catch(() => {})
       if (steveSongRef.current) steveSongRef.current.pause()
       if (rudySongRef.current) rudySongRef.current.pause()
     } else {
       if (steveSongRef.current) steveSongRef.current.pause()
       if (rudySongRef.current) rudySongRef.current.pause()
-      if (skyjackSongRef.current) skyjackSongRef.current.pause()
+      if (skyjackSongRef.current?.audio) {
+        skyjackSongRef.current.audio.pause()
+      }
     }
   }, [activeTab])
 
@@ -61,11 +87,19 @@ function App() {
     const videos = document.querySelectorAll('.video-story-item video')
     let animationFrameId = null
     let intervalId = null
+
+    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
+    const mobileUnmuteDelay = isMobile ? 220 : 100
     
-    // Aggressively keep music playing - call play() unconditionally
+    // Aggressively keep music playing - Web Audio API version
     const forceMusic = () => {
-      if (skyjackSongRef.current) {
-        skyjackSongRef.current.play().catch(() => {})
+      if (skyjackSongRef.current?.audio) {
+        if (skyjackSongRef.current.audioContext.state === 'suspended') {
+          skyjackSongRef.current.audioContext.resume()
+        }
+        if (skyjackSongRef.current.audio.paused) {
+          skyjackSongRef.current.audio.play().catch(() => {})
+        }
       }
     }
     
@@ -74,24 +108,29 @@ function App() {
       forceMusic()
       animationFrameId = requestAnimationFrame(keepMusicPlaying)
     }
+
+    const startVideoWithMusicProtection = (video) => {
+      forceMusic()
+      video.volume = 0.4
+      video.muted = true
+      video.play().catch(() => {})
+
+      // Unmute after background music has re-established playback.
+      setTimeout(() => {
+        forceMusic()
+        video.muted = false
+        forceMusic()
+        setTimeout(forceMusic, 10)
+        setTimeout(forceMusic, 30)
+        setTimeout(forceMusic, 60)
+      }, mobileUnmuteDelay)
+    }
     
     const observer = new IntersectionObserver((entries) => {
       entries.forEach(entry => {
         const video = entry.target
         if (entry.isIntersecting && entry.intersectionRatio > 0.5) {
-          // Force music immediately
-          forceMusic()
-          // Lower video volume significantly
-          video.volume = 0.4
-          // Mute video initially
-          video.muted = true
-          video.play().catch(() => {})
-          // Unmute after music is guaranteed playing
-          setTimeout(() => {
-            forceMusic()
-            video.muted = false
-            forceMusic()
-          }, 100)
+          startVideoWithMusicProtection(video)
         } else {
           video.pause()
           video.volume = 1.0
@@ -103,13 +142,38 @@ function App() {
 
     videos.forEach(video => {
       observer.observe(video)
+      // Remove native loop attribute for manual control
+      video.removeAttribute('loop')
+      
+      // Manual loop with aggressive music forcing - especially for mobile
+      const handleVideoEnd = () => {
+        // Force music BEFORE restarting video
+        forceMusic()
+        setTimeout(forceMusic, 5)
+        setTimeout(forceMusic, 10)
+
+        // Restart video with muted warm-up on every loop to avoid mobile audio focus stealing.
+        video.currentTime = 0
+        startVideoWithMusicProtection(video)
+
+        // Extra force calls around the restart boundary
+        setTimeout(forceMusic, 5)
+        setTimeout(forceMusic, 10)
+        setTimeout(forceMusic, 20)
+        setTimeout(forceMusic, 50)
+        setTimeout(forceMusic, 100)
+      }
+      
+      // Store handler on video element for cleanup
+      video._handleVideoEnd = handleVideoEnd
+      
       // Add comprehensive event listeners
       video.addEventListener('play', forceMusic)
       video.addEventListener('playing', forceMusic)
       video.addEventListener('loadeddata', forceMusic)
       video.addEventListener('canplay', forceMusic)
-      video.addEventListener('seeked', forceMusic)
       video.addEventListener('volumechange', forceMusic)
+      video.addEventListener('ended', handleVideoEnd)
     })
 
     // Double redundancy: both 60fps requestAnimationFrame AND 50ms setInterval
@@ -129,8 +193,10 @@ function App() {
         video.removeEventListener('playing', forceMusic)
         video.removeEventListener('loadeddata', forceMusic)
         video.removeEventListener('canplay', forceMusic)
-        video.removeEventListener('seeked', forceMusic)
         video.removeEventListener('volumechange', forceMusic)
+        if (video._handleVideoEnd) {
+          video.removeEventListener('ended', video._handleVideoEnd)
+        }
       })
     }
   }, [activeTab])
@@ -344,7 +410,7 @@ function App() {
                     <p>It all started with a bee. One moment Rudy was on solid ground, the next he was sprinting up a construction site like his life depended on it. By the time he realized the bee had given up, Rudy found himself stuck high in the rafters of an unfinished building, too scared to climb down.</p>
                   </div>
                   <div className="video-wrapper">
-                    <video controls playsInline loop>
+                    <video controls playsInline>
                       <source src="/videos/rudy stuck.mp4" type="video/mp4" />
                     </video>
                   </div>
@@ -356,7 +422,7 @@ function App() {
                     <p>Perched precariously among the steel beams, Rudy could only wait. The ground seemed impossibly far below. His heart raced as he gripped the rafters, hoping his best friend would know what to do.</p>
                   </div>
                   <div className="video-wrapper">
-                    <video controls playsInline loop>
+                    <video controls playsInline>
                       <source src="/videos/rudy waits.mp4" type="video/mp4" />
                     </video>
                   </div>
@@ -368,7 +434,7 @@ function App() {
                     <p>When Steve saw his friend trapped high above, he didn't hesitate. There was only one way to reach someone at that height. Steve immediately called for backup—not the fire department, but a Pig Boy who calls himself the Power Booster! (No one else calls him that)</p>
                   </div>
                   <div className="video-wrapper">
-                    <video controls playsInline loop>
+                    <video controls playsInline>
                       <source src="/videos/steve calls in help.mp4" type="video/mp4" />
                     </video>
                   </div>
@@ -380,7 +446,7 @@ function App() {
                     <p>Word spread quickly. Soon, onlookers gathered below, watching with anticipation. Would Steve be able to reach his friend? The tension was palpable as everyone waited for the rescue to begin.</p>
                   </div>
                   <div className="video-wrapper">
-                    <video controls playsInline loop>
+                    <video controls playsInline>
                       <source src="/videos/people waiting.mp4" type="video/mp4" />
                     </video>
                   </div>
@@ -392,7 +458,7 @@ function App() {
                     <p>With the skyjack fired up, Steve began his ascent. The powerful machine lifted him skyward, closing the distance between the ground and his stranded friend. This was the moment—Steve was coming to the rescue.</p>
                   </div>
                   <div className="video-wrapper">
-                    <video controls playsInline loop>
+                    <video controls playsInline>
                       <source src="/videos/steve to the rescue.mp4" type="video/mp4" />
                     </video>
                   </div>
@@ -404,7 +470,7 @@ function App() {
                     <p>Higher and higher Steve climbed, maneuvering the skyjack with precision. The crowd held their breath as he approached Rudy's position. Every movement mattered. Every second counted. This was friendship in action.</p>
                   </div>
                   <div className="video-wrapper">
-                    <video controls playsInline loop>
+                    <video controls playsInline>
                       <source src="/videos/the rescue.mp4" type="video/mp4" />
                     </video>
                   </div>
